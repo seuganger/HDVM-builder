@@ -126,6 +126,8 @@ def get_semantic_pcd(img,pcd):
     # segmentation
     cimg = predict(rimg)
     src[:, :, 2] = cimg
+    # print("the shape of src")
+    # print(np.shape(src))
     # recover pcd from depth img
     sem_pcdata = img2pcl(src)
     # filter noisy points
@@ -172,13 +174,15 @@ class myqueue(list):
 
 def getPose(lmsg,poses):
     try:
-        return poses[abs(poses[:,-1]-lmsg.header.stamp.to_sec())<0.001][0]
+        # print(poses[abs(poses[:,-1]-lmsg.header.stamp.to_sec())<0.15][0,-1],"  ",lmsg.header.stamp.to_sec())
+        return poses[abs(poses[:,-1]-lmsg.header.stamp.to_sec())<0.15][0]
     except Exception:
         return []
 
 def getImg(lmsg,IQ):
     i_last = None
     for imsg in IQ:
+        # print(lmsg.header.stamp.to_sec(),":",imsg.header.stamp.to_sec())
         if lmsg.header.stamp < imsg.header.stamp:
             if i_last is None:
                 return imsg
@@ -234,15 +238,20 @@ print('torch ready')
 
 bag = Bag(args.bag)
 start = bag.get_start_time()
+print(start)
 start = start+args.fastfoward
+print(start)
 if args.duration != -1:
     end = start+args.duration
     end = genpy.Time(end)
 else:
-    end = None
+    end = bag.get_end_time()
+    end = genpy.Time(end)
+    
 start = genpy.Time(start)
 
 bagread = bag.read_messages(start_time=start,end_time = end)
+print("start time ", start,"end time ", end)
 print('bag ready')
 
 
@@ -278,28 +287,34 @@ imgtopicmsg = None
 poses = np.loadtxt(args.pose,delimiter=',')
 
 IQ = myqueue(40)
-LQ = myqueue(5)
+LQ = myqueue(20)
 
 
 index = 0
 simgs = []
 pose_save = []
 save_step = 2
+
 for msg in bagread:
+    # print(msg.topic, msg.timestamp)
     if msg.topic == config['camera_topic']:
         imsg = msg.message
         IQ.append(imsg)
         # IFLAG = True
     elif msg.topic == config['LiDAR_topic']:
         lmsg = msg.message
+        # print(lmsg)
+        # pts = pc2.read_points(msg, skip_nans=True)
         LQ.append(lmsg)
-        removeQ = []
+        removeQ = []        
         for lmsg in LQ:
             pose = getPose(lmsg,poses)
             if len(pose) == 0:
+                print("no pose in this frame")
                 continue
             imgmsg = getImg(lmsg,IQ)
             if not imgmsg:
+                print("not this image frame")
                 continue    
             if index <= -1:
                 print('jump this frame')
@@ -308,18 +323,24 @@ for msg in bagread:
                 #img = bri.compressed_imgmsg_to_cv2(imgmsg)
                 img = briconvert(imgmsg)
 
-                xyz = pose[:3]
+                xyz = [pose[0],pose[1],pose[2]]
                 rot = qfe(*pose[4:7])
                 pose_save.append(np.array([*xyz,*rot]))
                 rimg = cv2.undistort(img, K, dismatrix)
                 cv2.imwrite(config['save_folder']+"/originpics/%06d.png"%(index),rimg)
                 lps = np.array(list(pc2.read_points(lmsg)))
-                lps = lps[lps[:, 1] > 0.2]
+                # print(np.shape(lps))
+                # lpscp = lps
+                # lps[:,0] = -lpscp[:,1]
+                # lps[:,1] = lpscp[:,0]
+                # print(np.shape(lps))
                 sem_pcd, semimg = get_semantic_pcd(img, lps)
                 cv2.imwrite(config['save_folder']+"/sempics/%06d.png" % (index), semimg)
                 semimg = colors[semimg.flatten()].reshape((*semimg.shape, 3))
                 semimgPubHandle.publish(bri.cv2_to_imgmsg(semimg,'bgr8'))
                 if len(sem_pcd) != 0:
+                    # todo: pcd trans rely on the accuracy of pose estimation
+                    # use no pcd projection info to calculate pose and point cloud
                     sem_world_pcd = pcd_trans(sem_pcd, pose[:3], pose[4:7])
                     sem_world.append(sem_world_pcd)
                     sem_msg = get_rgba_pcd_msg(sem_world_pcd)
@@ -334,8 +355,9 @@ for msg in bagread:
                 if index%200 == 0:
                     with open(config['save_folder']+'/indoor.pkl','wb') as f:
                         pickle.dump(sem_world,f)
-                    print('saved epoch %d'%index)
+                    # print('saved epoch %d'%index)
             index+=1
+            print("epoch:", index)
         for lmsg in removeQ:
             LQ.remove(lmsg)
 pose_save = np.stack(pose_save)

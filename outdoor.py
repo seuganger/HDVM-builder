@@ -190,11 +190,10 @@ print('ros ready')
 
 predict = getattr(predict,config['predict_func'])(config['model_config'],config['model_file'])
 
-
 print('torch ready')
 
-
 bag = Bag(args.bag)
+print('bag init')
 start = bag.get_start_time()
 start = start+args.fastfoward
 if args.duration != -1:

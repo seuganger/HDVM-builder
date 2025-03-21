@@ -20,22 +20,43 @@ from predict import get_colors
 
 
 #Modify the extrinsic parameters from LiDAR to camera to your own's, 
+# extrinsic = np.matrix(
+#     [
+#          [ 1.0102, -0.0026, -0.0087,  0.1135],
+#          [-0.0033, -0.0030, -0.9963, -0.1617],
+#          [ 0.0049,  0.9962, -0.0287,  0.0516],
+#          [ 0.0000,  0.0000,  0.0000,  1.0000]
+#     ]
+# )
+# #这里没改过来
+# #Modify the intrinsic parameters to your camera's
+# K = np.array([
+#     [543.5046, 0, 630.7183], 
+#     [0, 540.5383, 350.9063], 
+#     [0, 0, 1]
+# ])
+# #And the distortion parameters
+# dismatrix = np.array([-1.05873889e-01,  1.32265629e-01, -8.55667814e-05,-1.04098281e-03, -7.01241428e-02])
+
+# NTUsettings
+
 extrinsic = np.matrix(
     [
-         [ 1.0102, -0.0026, -0.0087,  0.1135],
-         [-0.0033, -0.0030, -0.9963, -0.1617],
-         [ 0.0049,  0.9962, -0.0287,  0.0516],
-         [ 0.0000,  0.0000,  0.0000,  1.0000]
+        [ 0, -1, 0, 0], 
+        [ 0, 0, -1, 0],
+        [ 1, 0, 0, 0], 
+        [ 0, 0, 0, 1]
     ]
 )
+#这里没改过来
 #Modify the intrinsic parameters to your camera's
 K = np.array([
-    [543.5046, 0, 630.7183], 
-    [0, 540.5383, 350.9063], 
+    [635.8618774414062, 0.0, 644.188720703125],
+    [0.0, 635.1408081054688, 367.4418640136719], 
     [0, 0, 1]
 ])
 #And the distortion parameters
-dismatrix = np.array([-1.05873889e-01,  1.32265629e-01, -8.55667814e-05,-1.04098281e-03, -7.01241428e-02])
+dismatrix = np.array([-0.05539800971746445, 0.06372743844985962, -0.00013181526446714997, 0.0003997093008365482, -0.01993836835026741])
 
 
 global dbs
@@ -155,7 +176,8 @@ def pcd_trans_44(pcd,tfmatrix44):
     pcd = pcd.astype('float32')
     length = len(pcd)
     pcd = pcd.T
-    pcd_xyz = pcd[:3]
+    pcd_xyz = [pcd[:3]]
+    pcd_xyz = np.asarray(pcd_xyz[0])
     ones = np.ones((1, length))
     transpcd = np.vstack((pcd_xyz, ones))
     pcd[:3] = np.dot(tfmatrix44, transpcd)[:3]
@@ -167,15 +189,23 @@ def pcl2image(pc,w,h,ex):
     #pc is a np array
     #Transform to camera frame
     pc = pcd_trans_44(pc,ex)
+    
     #Only process left and right side within 10 meters and front side out of 0.2 meters
-    d=pc[(pc[:,2]>0.2)&(pc[:,0]>-10)&(pc[:,0]<10)]
+    d=pc[(pc[:,2]>-0.2)&(pc[:,0]>-10)&(pc[:,0]<10)]
+    #z>0.2, -10<x<10
+    
     b=d[:,3]
+    #b:places,e:colors
     e=d[:,:3]
     #Project to image
+    #from camera Frame to image Frame
     r=K.dot(e.T)
     scale = copy.deepcopy(r[2])
+    
     r=r/r[2]
+   
     t = r.T[:,:2]
+    
     p = np.concatenate([t,b.reshape(-1,1),scale.reshape(-1,1)],axis=1)
     p = p[(p[:,0]>=0)&(p[:,1]>=1)&(p[:,0]<w)&(p[:,1]<h)]
     img = np.zeros((h,w,3))#intensity depth class
@@ -185,8 +215,11 @@ def pcl2image(pc,w,h,ex):
             img[int(i[1]),int(i[0])]=np.array([i[2],i[3],0])
         except Exception as e:
             print(e,i[1],i[0],int(i[1]))
+    # cv2.imshow('1',img)
+    # cv2.waitKey(500)
+    # cv2.destroyAllWindows()
     return img
-#Temporarily stop using interpolation, due to multi classes of the segmentation
+    #Temporarily stop using interpolation, due to multi classes of the segmentation
     #interpolation
     interp_img = copy.deepcopy(img)
     pool = mp.Pool(24)
@@ -308,7 +341,7 @@ def get_i_pcd_msg(pcd):
     msg.data = ret.tostring()
     return msg
 
-def  get_rgba_pcd_msg(pcd,pcdcolor=color[(255,0,0,255)],frame = 'world'):
+def get_rgba_pcd_msg(pcd,pcdcolor=color[(255,0,0,255)],frame = 'world'):
     ret = np.zeros((pcd.shape[0], 1), dtype={"names": ("x", "y", "z", "rgba"), "formats": ("f4", "f4", "f4", "u4")})
     ret['x'] = pcd[:, 0].reshape(-1, 1)
     ret['y'] = pcd[:, 1].reshape(-1, 1)

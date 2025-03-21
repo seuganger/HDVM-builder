@@ -16,7 +16,18 @@ import glob
 import cv2
 import re
 from tf import transformations
+from scipy.spatial.transform import Rotation as R
 from predict import get_colors
+import matplotlib.pyplot as plt
+
+# building vector map in osm format
+# import argparse
+# from datetime import datetime
+# import os
+# import pathlib
+# from bag2way import bag2pose
+# from bag2way import pose2line
+# from lanelet_xml import LaneletMap
 
 height = {'pole': 5, 'lane':-1.1}
 
@@ -30,7 +41,6 @@ global odom_trans
 global last_points
 global vectors
 global lanepcd
-
 
 class myqueue(list):
     def __init__(self, cnt=-1):
@@ -97,6 +107,8 @@ def pcd_trans(pcd,dt,dr,inverse = False):
     pcd_xyz = pcd[:3]
     ones = np.ones((1, length))
     transpcd = np.vstack((pcd_xyz, ones))
+    # print(dt)
+    # print(transformations.translation_matrix(dt))
     mat44 = np.dot(transformations.translation_matrix(dt), transformations.quaternion_matrix(dr))
     if inverse:
         mat44 = np.matrix(mat44).I
@@ -104,28 +116,184 @@ def pcd_trans(pcd,dt,dr,inverse = False):
     transedpcd = pcd.T
     return transedpcd
 
+def point_trans(ptpose,ori_frame,inverse = False):
+    rotp = pd.Series(ptpose[3:7], index=['x', 'y', 'z', 'w'])
+    dt = ori_frame
+    dr = pd.Series(ori_frame[3:7], index=['x', 'y', 'z', 'w'])
+    mat44 = np.dot(transformations.translation_matrix(dt), transformations.quaternion_matrix(dr))
+    Fp = np.dot(transformations.translation_matrix(ptpose), transformations.quaternion_matrix(rotp))
+    if inverse:
+        mat44 = np.matrix(mat44).I
+    transpose = np.dot(mat44, Fp)
+    # print("transpose",transpose)
+    pt_s = np.asarray([transpose[0,3],transpose[1,3],transpose[2,3]])
+    r = R.from_matrix(transpose[:3,:3])
+    pt_s = np.append(pt_s, r.as_quat())
+    # pt_s = np.squeeze(pt_s)
+    return pt_s
+
 
 def get_lane_centers(pcd):
+    pcd = pcd[(pcd[:,0]>-10)&(pcd[:,0]<10)]
     centers = []
     if len(pcd) == 0:
         return centers
     dbs.fit(pcd)
-    labels = dbs.fit_predict(pcd)  # label
+    labels = dbs.fit_predict(pcd)  # label   
     cluster = list(set(labels))
+    # print(np.shape(pcd))
     n = len(cluster)
+    print("num of clustering:", n)
     for i in cluster:
         if n <= 0:
             continue
         c = pcd[labels == i]  # each cluster
         if abs(c[:,0].max()-c[:,0].min()) > 0.3:
             if c[:,0].mean() < 0:
-                center = np.array((c[:, 0].max()-0.2, c[:, 1].mean(), c[:,2].mean()))#-2.3))
+                center = np.array((c[:, 0].max()-0.2, c[:, 1].mean(), c[:,2].mean()))#-2.3))这里假定都是直道
             else:
                 center = np.array((c[:, 0].min()+0.2, c[:, 1].mean(), c[:,2].mean()))#-2.3))
         else:
             center = np.array((c[:,0].mean(),c[:,1].mean(),-2.3))
         centers.append(center)
     return centers
+
+def get_vector_nodes(pcd):
+    global pre_left_node_dis
+    global pre_right_node_dis
+    global default_half_road_width
+    global last_pose
+
+    if((last_pose[0] == 0) & (last_pose[1] == 0) & (last_pose[2] == 0)):
+        last_pose = poses[index][:3]
+
+    # initialize
+    alpha = 0.85
+    # alpha is parameter to combine semantic information and pose information
+    leftnode = []
+    rightnode = []
+    pcd = pcd[(pcd[:,2]<20)&(pcd[:,0]>-10)&(pcd[:,0]<10)]
+    if (len(pcd) == 0):
+        return leftnode, rightnode
+    if (np.linalg.norm(poses[len(poses)-1][:3] - poses[index][:3]) < 5.5):
+        return leftnode, rightnode
+    if (np.linalg.norm(last_pose - poses[index][:3]) < 0.5):
+        return leftnode, rightnode
+    
+    last_pose = poses[index][:3]
+    p = poses[index]   
+    this_index = index + 1
+    
+    while True:
+        dis_2pose = np.linalg.norm(poses[this_index][:3] - poses[index][:3])
+        if dis_2pose > 4.5:
+            break   
+        this_index += 1      
+    # calculate pose after 2 seconds in this frame
+    pose_extend = poses[this_index]
+    # print("index info", index, this_index)
+    rot0 = pd.Series(p[3:7], index=['x', 'y', 'z', 'w'])
+    pose_estimate = point_trans(pose_extend, p, True) # 反变换到Lidar坐标系下
+    pose_estimate[2] = pose_estimate[2] - 0.9
+    
+    left_tran = [0, pre_left_node_dis, 0, 0, 0, 0, 1]
+    right_tran = [0, -pre_right_node_dis, 0, 0, 0, 0, 1]
+    leftnode_estimate = point_trans(left_tran,pose_estimate)
+    rightnode_estimate = point_trans(right_tran,pose_estimate)
+    # print("pose_estimation",pose_estimate)
+    # print("leftnode_estimation",leftnode_estimate)
+    # print("rightnode_estimation",rightnode_estimate)
+
+    # DBSCAN聚类
+    dbs.fit(pcd)
+    labels = dbs.fit_predict(pcd)  # label   
+    cluster = list(set(labels))
+    n = len(cluster)
+    # print("num of clustering:", n)
+
+    # ransac特征提取
+    # valid_cluster = []
+    # for i in cluster:
+    #     if n <= 0:
+    #         continue
+    #     c = pcd[labels == i]  # each cluster
+
+    # 构建左右节点  
+    # # 预测节点到聚类距离 
+    pt2pcd_dis = []
+    for i in cluster:
+        if len(cluster) <= 0:
+            continue
+        c = pcd[labels == i]
+        pc = c[:,:3]
+        # print(np.shape(pc))
+        if(len(pc)>50):
+            pdis,pp,pclose = dis3d_pt2pcd(pose_estimate,pc)
+            ldis,lp,lclose = dis3d_pt2pcd(leftnode_estimate,pc)
+            rdis,rp,rclose = dis3d_pt2pcd(rightnode_estimate,pc)
+            # plt.scatter(pp[0],pp[1],color = 'r')
+            # plt.scatter(lp[0],lp[1],color = 'r')
+            # plt.scatter(rp[0],rp[1],color = 'r')
+            # plt.scatter(pc[:,0],pc[:,1], s = 2, c = (0,0,0.3+0.08*i))
+            pt2pcd_dis.append([pdis,ldis,rdis])
+
+    # plt.scatter(pose_estimate[0],pose_estimate[1],color = 'g')
+    # plt.scatter(leftnode_estimate[0],leftnode_estimate[1],color = 'g')
+    # plt.scatter(rightnode_estimate[0],rightnode_estimate[1],color = 'g')
+    # plt.show()
+    if len(pt2pcd_dis) <=0:
+        return leftnode, rightnode
+    
+    pt2pcd_dis = np.asarray(pt2pcd_dis)    
+    
+    args_min = np.argmin(pt2pcd_dis, axis=0)
+    # print(args_min)
+    sem_lerror = pt2pcd_dis[args_min[1],1]
+    if sem_lerror > 0.5:
+        sem_ldis = pre_left_node_dis
+    else:
+        sem_ldis = pt2pcd_dis[args_min[1],0]
+
+    sem_rerror = pt2pcd_dis[args_min[2],2]
+    if sem_rerror > 0.5:
+        sem_rdis = pre_right_node_dis
+    else:
+        sem_rdis = pt2pcd_dis[args_min[2],0]
+    # print(sem_ldis,sem_lerror,sem_rdis,sem_rerror)
+    # pose correction constant
+    pL = pre_left_node_dis - default_half_road_width
+    pR = pre_right_node_dis - default_half_road_width
+
+    # four multiple contraints
+    ldis = alpha * pre_left_node_dis + (1-alpha) * sem_ldis - (0.05+0.75*np.abs(pL+pR)) * pL 
+    rdis = alpha * pre_right_node_dis + (1-alpha) * sem_rdis - (0.05+0.75*np.abs(pL+pR)) * pR 
+
+    left_tran = [0, ldis, 0, 0, 0, 0, 1]
+    right_tran = [0, -rdis, 0, 0, 0, 0, 1]
+    leftnode = point_trans(left_tran,pose_estimate)
+    rightnode = point_trans(right_tran,pose_estimate)
+    pre_left_node_dis = ldis
+    pre_right_node_dis = rdis
+
+    print("right distance",rdis, "left distance", ldis)
+
+    return leftnode, rightnode
+
+def dis3d_pt2pcd(single_pt,pcd,down_rate = 10):
+    pt_total_dis = np.linalg.norm(pcd - single_pt[:3], axis=1)
+    len_min = int(len(pcd)/down_rate)
+    arg_min_pt = np.argsort(pt_total_dis)
+
+    min_dis_pts = []
+    for i in range(len_min):
+        min_dis_pts.append(pcd[arg_min_pt[i]])
+    min_dis_pts = np.asarray(min_dis_pts)    
+
+    mean_pt = np.average(min_dis_pts, axis = 0)
+    mean_pt_dis = np.linalg.norm(mean_pt - single_pt[:3])
+
+    # return mean_pt_dis, min_dis_pts, mean_pt
+    return mean_pt_dis, mean_pt, pt_total_dis[arg_min_pt[0]]
 
 def get_pole_centers(pcd):
     centers = []
@@ -143,6 +311,7 @@ def get_pole_centers(pcd):
         centers.append(center)
     return centers
 
+
 def process():
     global sempcd
     global args
@@ -152,9 +321,15 @@ def process():
     global last_points
     global vectors
     global lanepcd
+    global linepoint
+    global left_nodes
+    global right_nodes
+    global pre_left_node_dis
+    global pre_right_node_dis
 
     if args.trajectory:
         p = poses[index]
+        print("This is the loop: ",index)
         rotation = pd.Series(p[3:7], index=['x', 'y', 'z', 'w'])
         br.sendTransform((p[0], p[1], p[2]), rotation, rospy.Time(time.time()), 'odom', 'world')
         if args.vector:
@@ -171,8 +346,26 @@ def process():
                     lanes = lanes[lanes[:, 1] < 8] #3 for parking lot, 8 for science park
                     #testPubHandle.publish(get_rgba_pcd_msg(pcd_trans(lanes,p,rotation)))
                     centers = get_lane_centers(lanes)
-                    if len(centers) != 0:
+                    centers = []
+                    # print(centers)
+                    lnode,rnode = get_vector_nodes(lanes)
+                    # print("left node", lnode)
+                    # print("right node", rnode)
+                    
+                    if len(lnode) != 0:
+                        lnode_world = point_trans(lnode,p)
+                        rnode_world = point_trans(rnode,p)
+                        print("current positon", p)
+                        print("left node", lnode_world)
+                        print("right node", rnode_world)
+                        left_nodes=np.append(left_nodes,[lnode_world[:3]],axis=0)
+                        right_nodes=np.append(right_nodes,[rnode_world[:3]],axis=0)
+                        print(np.shape(left_nodes),np.shape(right_nodes))
+
+                    if len(centers) != 0:                       
                         centers = list(pcd_trans(centers,p,rotation))
+                        # print(centers)
+                        # print(p[0:6])
                         if last_points:
                             pairs = {}
                             lines = []
@@ -194,8 +387,18 @@ def process():
                                 else:
                                     pairs[tuple(pair[2])] = pair
                             pairs_all.append(pairs)
+                            # print(pairs)
+                            
+                            tmplinedata = np.empty((0,3))
                             for i in pairs:
                                 lines.append(draw_line(*(pairs[i][1:])))
+                                tmplinedata = np.append(tmplinedata,pairs[i][1:2],axis=0)
+                            # print(tmplinedata)
+                            print(np.shape(tmplinedata))   
+                            if(np.shape(tmplinedata)[0]<3):
+                                print("The line didn't in number 3\n\n")                   
+                            linepoint=np.append(linepoint, tmplinedata,axis=0)   
+                            print(np.shape(linepoint))
                             if len(lines) != 0:
                                 lines = np.vstack(lines)
                                 #lines = pcd_trans(lines,p,rotation)
@@ -204,6 +407,7 @@ def process():
                                 vecmsg.header.frame_id = 'world'
                                 vecPubHandle.publish(vecmsg)
                         last_points.append(centers)
+                   
     index += 1
 
 
@@ -249,6 +453,11 @@ args.vector = (args.vector) or config['vector']
 
 window = 10
 step = 1
+default_half_road_width = 1.5
+pre_left_node_dis = default_half_road_width
+pre_right_node_dis = default_half_road_width
+last_pose = np.asarray([0,0,0])
+
 
 # start ros
 rospy.init_node('fix_distortion', anonymous=False, log_level=rospy.DEBUG)
@@ -261,10 +470,13 @@ imgPubHandle = rospy.Publisher('Img',Image,queue_size = 5)
 color_classes = get_colors(config['cmap'])
 savepcd = []
 vectors = []
+linepoint = np.empty((0,3))
+left_nodes = np.empty((0,3))
+right_nodes = np.empty((0,3))
 bri = CvBridge()
 index = 0
 br = tf.TransformBroadcaster()
-dbs = DBSCAN(eps = 1,min_samples=5,n_jobs=24)
+dbs = DBSCAN(eps = 0.3,min_samples=80,n_jobs=24)
 pole_dbs = DBSCAN(eps = 0.3,min_samples=50,n_jobs=24)
 #dbs = DBSCAN()
 last_points = myqueue(1)
@@ -292,17 +504,27 @@ if args.trajectory:
 if args.mode == 'indoor':
     sempcds = pickle.load(args.input)
     for sempcd in sempcds:
-        process()
+        process() 
+    # np.save("/home/gjd/hdmap_ws/src/HDMap/linepoint.npy",linepoint)
+    np.save("/home/gjd/hdmap_ws/src/HDMap/left_nodes.npy",left_nodes)
+    np.save("/home/gjd/hdmap_ws/src/HDMap/right_nodes.npy",right_nodes)
+    plt.scatter(left_nodes[:,0],left_nodes[:,1], s = 1, color = 'b')
+    plt.scatter(right_nodes[:,0],right_nodes[:,1], s = 1, color = 'g')
+    plt.scatter(poses[:,0],poses[:,1], s = 1, color = 'r')
+    plt.show()
     savepcd = np.concatenate(sempcds)
+    print('done')
+   
 elif args.mode == 'outdoor':
     try:
         while True:
             sempcd = pickle.load(args.input)
             savepcd.append(sempcd)
             process()
-            #print(index)
+            print("this is the loop:",index)
     except EOFError:
         print('done')
+        np.save("/home/gjd/hdmap_ws/src/HDMap/linepoint.npy",linepoint)
         savepcd = np.concatenate(savepcd)
 
 if args.vector:

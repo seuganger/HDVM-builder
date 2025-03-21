@@ -1,32 +1,32 @@
 {
-    "bag_file":"data/indoor/indoor.bag",
-    "pose_file":"data/indoor/pose6d.csv",
-    "start_time":10,
-    "play_time":5,
-    "LiDAR_topic":"/velodyne_points",
-    "camera_topic":"/zed2/camera/left/image_raw",
-    "image_compressed":false,
+    "bag_file":"/home/gjd/database/TOSHIBA EXT/NTUdataset/outdoor/outdoor_03181012.bag",
+    "pose_file":"/home/gjd/database/TOSHIBA EXT/NTUdataset/outdoor/pose_03181012_gnss.csv",
+    "start_time":600,
+    "play_time":900,
+    "LiDAR_topic":"/hesai/xt32/lidar_points",
+    "camera_topic":"/camera/color/image_raw/compressed",
+    "image_compressed":true,
     "extrinsic":    
     [
-        [ 1.0102, -0.0026, -0.0087,  0.1135],
-        [-0.0033, -0.0030, -0.9963, -0.1617],
-        [ 0.0049,  0.9962, -0.0287,  0.0516],
-        [ 0.0000,  0.0000,  0.0000,  1.0000]
+        [ 0, -1, 0, 0], 
+        [ 0, 0, -1, 0],
+        [ 1, 0, 0, 0], 
+        [ 0, 0, 0, 1]
     ],
    "intrinsic":
     [
-        [543.5046, 0, 630.7183], 
-        [0, 540.5383, 350.9063], 
+        [635.8618774414062, 0.0, 644.188720703125],
+        [0.0, 635.1408081054688, 367.4418640136719], 
         [0, 0, 1]
     ],
-    "distortion_matrix":[-1.05873889e-01,  1.32265629e-01, -8.55667814e-05,-1.04098281e-03, -7.01241428e-02],
-    "save_folder":"result/indoor",
+    "distortion_matrix":[-0.05539800971746445, 0.06372743844985962, -0.00013181526446714997, 0.0003997093008365482, -0.01993836835026741],
+    "save_folder":"result/outdoor_lap",
     "mode":"indoor",
     "model_config":"imseg/mask2former/config/swin/maskformer2_swin_large_IN21k_384_bs16_300k.yaml",
-    "model_file":"imseg/mask2former/model/model.pkl",
+    "model_file":"/home/gjd/database/TOSHIBA EXT/IPNLbag/models/model_final_90ee2d.pkl",
     "lane_class":24,
     "pole_class":45,
     "predict_func":"get_predict_func_detectron",
-    "vector":false,
+    "vector":true,
     "cmap":"mapillary"
 }

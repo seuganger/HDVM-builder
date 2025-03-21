@@ -1,7 +1,7 @@
 {
-    "bag_file":"data/outdoor/outdoor.bag",
+    "bag_file":"/home/gjd/database/TOSHIBA EXT/IPNLbag/data/outdoor.bag",
     "start_time":120,
-    "play_time":5,
+    "play_time":10,
     "GNSS_topic":"/acc_pose",
     "LiDAR_topic":"/dedistortion_cloud",
     "cloud_distortion":false,
@@ -24,7 +24,7 @@
     "save_folder":"result/outdoor",
     "mode":"outdoor",
     "model_config":"imseg/mask2former/config/swin/maskformer2_swin_large_IN21k_384_bs16_300k.yaml",
-    "model_file":"imseg/mask2former/model/model.pkl",
+    "model_file":"/home/gjd/database/TOSHIBA EXT/IPNLbag/models/model_final_90ee2d.pkl",
     "lane_class":24,
     "pole_class":45,
     "vector":true,
