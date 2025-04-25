@@ -143,7 +143,7 @@ def get_lane_centers(pcd):
     cluster = list(set(labels))
     # print(np.shape(pcd))
     n = len(cluster)
-    print("num of clustering:", n)
+    # print("num of clustering:", cluster)
     for i in cluster:
         if n <= 0:
             continue
@@ -200,6 +200,7 @@ def get_vector_nodes(pcd):
     right_tran = [0, -pre_right_node_dis, 0, 0, 0, 0, 1]
     leftnode_estimate = point_trans(left_tran,pose_estimate)
     rightnode_estimate = point_trans(right_tran,pose_estimate)
+    # return leftnode_estimate, rightnode_estimate
     # print("pose_estimation",pose_estimate)
     # print("leftnode_estimation",leftnode_estimate)
     # print("rightnode_estimation",rightnode_estimate)
@@ -209,7 +210,7 @@ def get_vector_nodes(pcd):
     labels = dbs.fit_predict(pcd)  # label   
     cluster = list(set(labels))
     n = len(cluster)
-    # print("num of clustering:", n)
+    print("num of clustering:", cluster)
 
     # ransac特征提取
     # valid_cluster = []
@@ -221,25 +222,28 @@ def get_vector_nodes(pcd):
     # 构建左右节点  
     # # 预测节点到聚类距离 
     pt2pcd_dis = []
+    # plt.scatter(pcd[:,0],pcd[:,1], s = 2, label='Lane points', c = (0,0,0.5))
     for i in cluster:
         if len(cluster) <= 0:
             continue
         c = pcd[labels == i]
         pc = c[:,:3]
         # print(np.shape(pc))
-        if(len(pc)>50):
+        if(len(pc)>50&i>-1):
             pdis,pp,pclose = dis3d_pt2pcd(pose_estimate,pc)
             ldis,lp,lclose = dis3d_pt2pcd(leftnode_estimate,pc)
             rdis,rp,rclose = dis3d_pt2pcd(rightnode_estimate,pc)
-            # plt.scatter(pp[0],pp[1],color = 'r')
-            # plt.scatter(lp[0],lp[1],color = 'r')
-            # plt.scatter(rp[0],rp[1],color = 'r')
-            # plt.scatter(pc[:,0],pc[:,1], s = 2, c = (0,0,0.3+0.08*i))
+            # plt.scatter(pp[0],pp[1],label='1', c = (1,0,0))
+            # plt.scatter(lp[0],lp[1],label='2', c = (0.8,0,0))
+            # plt.scatter(rp[0],rp[1],label='3', c = (0.6,0,0))
+            # plt.scatter(pc[:,0],pc[:,1], s = 1, c = (0,0,(0.7+0.6*i-int(0.7+0.6*i))))
             pt2pcd_dis.append([pdis,ldis,rdis])
-
-    # plt.scatter(pose_estimate[0],pose_estimate[1],color = 'g')
-    # plt.scatter(leftnode_estimate[0],leftnode_estimate[1],color = 'g')
-    # plt.scatter(rightnode_estimate[0],rightnode_estimate[1],color = 'g')
+     
+    # plt.scatter(pose_estimate[0],pose_estimate[1],label='Reference point',c = (0,1,0))
+    # plt.scatter(leftnode_estimate[0],leftnode_estimate[1],label='Priori info estimation',c = (0,0.5,0))
+    # plt.scatter(rightnode_estimate[0],rightnode_estimate[1],c = (0,0.5,0))
+    
+    # plt.legend()
     # plt.show()
     if len(pt2pcd_dis) <=0:
         return leftnode, rightnode
@@ -247,35 +251,74 @@ def get_vector_nodes(pcd):
     pt2pcd_dis = np.asarray(pt2pcd_dis)    
     
     args_min = np.argmin(pt2pcd_dis, axis=0)
-    # print(args_min)
-    sem_lerror = pt2pcd_dis[args_min[1],1]
-    if sem_lerror > 0.5:
-        sem_ldis = pre_left_node_dis
-    else:
-        sem_ldis = pt2pcd_dis[args_min[1],0]
 
+    # print(args_min)
+
+    sem_lerror = pt2pcd_dis[args_min[1],1]
+    sem_ldis = pt2pcd_dis[args_min[1],0]
     sem_rerror = pt2pcd_dis[args_min[2],2]
-    if sem_rerror > 0.5:
-        sem_rdis = pre_right_node_dis
-    else:
-        sem_rdis = pt2pcd_dis[args_min[2],0]
-    # print(sem_ldis,sem_lerror,sem_rdis,sem_rerror)
+    sem_rdis = pt2pcd_dis[args_min[2],0]
+
+    print(sem_ldis,sem_lerror,sem_rdis,sem_rerror)
     # pose correction constant
     pL = pre_left_node_dis - default_half_road_width
     pR = pre_right_node_dis - default_half_road_width
 
-    # four multiple contraints
-    ldis = alpha * pre_left_node_dis + (1-alpha) * sem_ldis - (0.05+0.75*np.abs(pL+pR)) * pL 
-    rdis = alpha * pre_right_node_dis + (1-alpha) * sem_rdis - (0.05+0.75*np.abs(pL+pR)) * pR 
+    
+   
+    if(-0.5 < 2 * default_half_road_width - sem_ldis - sem_rdis < 0.5):
+        print('good shape')
+    else:
+        if ((-1 < default_half_road_width - sem_ldis < 0.5) | (-1 < default_half_road_width - sem_rdis < 0.5)):
+            print ('one in good shape')
 
+            if ((-1 < default_half_road_width - sem_ldis < 0.5) & (-1 < default_half_road_width - sem_rdis < 0.5)):
+                if(min(sem_lerror, sem_rerror) < 0.3):
+                    if(sem_lerror < sem_rerror):
+                        sem_rdis = (pre_left_node_dis + pre_right_node_dis - sem_ldis)
+                    else:
+                        sem_ldis = (pre_left_node_dis + pre_right_node_dis - sem_rdis)
+                else:
+                    sem_ldis = pre_left_node_dis
+                    sem_rdis = pre_right_node_dis
+
+            else:     
+                if(-1 < default_half_road_width - sem_ldis < 0.5):
+                    if(sem_lerror < 0.3):
+                        sem_rdis = (pre_left_node_dis + pre_right_node_dis - sem_ldis)
+                    else:
+                        sem_ldis = pre_left_node_dis
+                        sem_rdis = pre_right_node_dis
+
+                else:
+                    if(sem_rerror < 0.3):
+                        sem_ldis = (pre_left_node_dis + pre_right_node_dis - sem_rdis)
+                    else:
+                        sem_ldis = pre_left_node_dis
+                        sem_rdis = pre_right_node_dis  
+        else:
+            print('sem fail')
+            sem_ldis = pre_left_node_dis
+            sem_rdis = pre_right_node_dis 
+
+    # four multiple contraints
+
+    ldis = alpha * pre_left_node_dis + (1-alpha) * sem_ldis - (0.05+0.25*np.abs(pL+pR)) * pL 
+    rdis = alpha * pre_right_node_dis + (1-alpha) * sem_rdis - (0.05+0.25*np.abs(pL+pR)) * pR 
+    # ldis = sem_ldis
+    # rdis = sem_rdis
+    
     left_tran = [0, ldis, 0, 0, 0, 0, 1]
     right_tran = [0, -rdis, 0, 0, 0, 0, 1]
     leftnode = point_trans(left_tran,pose_estimate)
     rightnode = point_trans(right_tran,pose_estimate)
     pre_left_node_dis = ldis
     pre_right_node_dis = rdis
-
-    print("right distance",rdis, "left distance", ldis)
+    # plt.scatter(leftnode[0],leftnode[1],label='Predicted node',c = (1,0,0))
+    # plt.scatter(rightnode[0],rightnode[1],c = (1,0,0))
+    # # print("right distance",rdis, "left distance", ldis)
+    # plt.legend()
+    # plt.show()
 
     return leftnode, rightnode
 
@@ -345,7 +388,7 @@ def process():
                     lanes = pcd_trans(lanes, p, rotation, True)
                     lanes = lanes[lanes[:, 1] < 8] #3 for parking lot, 8 for science park
                     #testPubHandle.publish(get_rgba_pcd_msg(pcd_trans(lanes,p,rotation)))
-                    centers = get_lane_centers(lanes)
+                    # centers = get_lane_centers(lanes)
                     centers = []
                     # print(centers)
                     lnode,rnode = get_vector_nodes(lanes)
@@ -355,12 +398,12 @@ def process():
                     if len(lnode) != 0:
                         lnode_world = point_trans(lnode,p)
                         rnode_world = point_trans(rnode,p)
-                        print("current positon", p)
-                        print("left node", lnode_world)
-                        print("right node", rnode_world)
+                        # print("current positon", p)
+                        # print("left node", lnode_world)
+                        # print("right node", rnode_world)
                         left_nodes=np.append(left_nodes,[lnode_world[:3]],axis=0)
                         right_nodes=np.append(right_nodes,[rnode_world[:3]],axis=0)
-                        print(np.shape(left_nodes),np.shape(right_nodes))
+                        # print(np.shape(left_nodes),np.shape(right_nodes))
 
                     if len(centers) != 0:                       
                         centers = list(pcd_trans(centers,p,rotation))
@@ -398,7 +441,7 @@ def process():
                             if(np.shape(tmplinedata)[0]<3):
                                 print("The line didn't in number 3\n\n")                   
                             linepoint=np.append(linepoint, tmplinedata,axis=0)   
-                            print(np.shape(linepoint))
+                            # print(np.shape(linepoint))
                             if len(lines) != 0:
                                 lines = np.vstack(lines)
                                 #lines = pcd_trans(lines,p,rotation)
@@ -476,8 +519,8 @@ right_nodes = np.empty((0,3))
 bri = CvBridge()
 index = 0
 br = tf.TransformBroadcaster()
-dbs = DBSCAN(eps = 0.3,min_samples=80,n_jobs=24)
-pole_dbs = DBSCAN(eps = 0.3,min_samples=50,n_jobs=24)
+dbs = DBSCAN(eps = 0.5,min_samples=80,n_jobs=24)
+pole_dbs = DBSCAN(eps = 0.5,min_samples=50,n_jobs=24)
 #dbs = DBSCAN()
 last_points = myqueue(1)
 lanepcd = myqueue(window)
@@ -508,9 +551,12 @@ if args.mode == 'indoor':
     # np.save("/home/gjd/hdmap_ws/src/HDMap/linepoint.npy",linepoint)
     np.save("/home/gjd/hdmap_ws/src/HDMap/left_nodes.npy",left_nodes)
     np.save("/home/gjd/hdmap_ws/src/HDMap/right_nodes.npy",right_nodes)
-    plt.scatter(left_nodes[:,0],left_nodes[:,1], s = 1, color = 'b')
-    plt.scatter(right_nodes[:,0],right_nodes[:,1], s = 1, color = 'g')
-    plt.scatter(poses[:,0],poses[:,1], s = 1, color = 'r')
+    np.save("/home/gjd/hdmap_ws/src/HDMap/linepoint.npy",linepoint)
+    plt.rcParams.update({'font.size': 24})
+    plt.scatter(left_nodes[:,0],left_nodes[:,1], label = 'Left lane nodes',s = 1, color = 'b')
+    plt.scatter(right_nodes[:,0],right_nodes[:,1], label = 'Right lane nodes',s = 1, color = 'g')
+    plt.scatter(poses[:,0],poses[:,1], s = 1, label = 'Pose trajectory', color = 'r')
+    plt.legend()
     plt.show()
     savepcd = np.concatenate(sempcds)
     print('done')

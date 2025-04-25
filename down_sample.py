@@ -59,7 +59,7 @@ def convert_pcd_format(input_file: str, output_file: str):
 
 def downsample_point_cloud_random(input_file: str, output_file: str, sample_ratio: float = 0.05):
     # Load the point cloud
-    cloud = pcl.PointCloud.PointXYZ()
+    cloud = pcl.PointCloud.PointXYZRGBA()
     if pcl.io.loadPCDFile(input_file, cloud) == -1:
         print("Error loading point cloud file!")
         return
@@ -67,17 +67,17 @@ def downsample_point_cloud_random(input_file: str, output_file: str, sample_rati
     print(f"Loaded point cloud with {cloud.size()} points.")
     
     # Apply Random Sampling
-    random_filter = pcl.filters.RandomSample.PointXYZ()
+    random_filter = pcl.filters.RandomSample.PointXYZRGBA()
     random_filter.setInputCloud(cloud)
     random_filter.setSample(int(cloud.size() * sample_ratio))
     
-    downsampled_cloud = pcl.PointCloud.PointXYZ()
+    downsampled_cloud = pcl.PointCloud.PointXYZRGBA()
     random_filter.filter(downsampled_cloud)
     
     print(f"Downsampled point cloud has {downsampled_cloud.size()} points.")
     
     # Save the downsampled point cloud
-    pcl.io.savePCDFileASCII(output_file, downsampled_cloud)
+    pcl.io.save(output_file, downsampled_cloud)
     print(f"Downsampled point cloud saved to {output_file}")
 
 # convert_pcd_format("result/outdoor_lap/downsampled.pcd", "result/outdoor_lap/downsampled_xyzi.pcd")
