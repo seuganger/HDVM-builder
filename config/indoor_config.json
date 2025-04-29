@@ -1,8 +1,8 @@
 {
-    "bag_file":"/home/gjd/database/TOSHIBA EXT/NTUdataset/outdoor/outdoor_03181012.bag",
-    "pose_file":"/home/gjd/database/TOSHIBA EXT/NTUdataset/outdoor/pose_03181012_gnss.csv",
-    "start_time":600,
-    "play_time":900,
+    "bag_file":"/home/gjd/database/TOSHIBA EXT/NTUdataset/outdoor/hdmap_2025-04-11-12-17-42.bag",
+    "pose_file":"/home/gjd/database/TOSHIBA EXT/NTUdataset/outdoor/pose_0411.csv",
+    "start_time":40,
+    "play_time":550,
     "LiDAR_topic":"/hesai/xt32/lidar_points",
     "camera_topic":"/camera/color/image_raw/compressed",
     "image_compressed":true,
@@ -20,7 +20,7 @@
         [0, 0, 1]
     ],
     "distortion_matrix":[-0.05539800971746445, 0.06372743844985962, -0.00013181526446714997, 0.0003997093008365482, -0.01993836835026741],
-    "save_folder":"result/outdoor_lap",
+    "save_folder":"result/outdoor_0411",
     "mode":"indoor",
     "model_config":"imseg/mask2former/config/swin/maskformer2_swin_large_IN21k_384_bs16_300k.yaml",
     "model_file":"/home/gjd/database/TOSHIBA EXT/IPNLbag/models/model_final_90ee2d.pkl",
