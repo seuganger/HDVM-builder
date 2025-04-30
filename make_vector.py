@@ -264,10 +264,20 @@ def get_vector_nodes(pcd):
     pL = pre_left_node_dis - default_half_road_width
     pR = pre_right_node_dis - default_half_road_width
 
-    
    
     if(-0.5 < 2 * default_half_road_width - sem_ldis - sem_rdis < 0.5):
-        print('good shape')
+        if (sem_lerror<0.5 & sem_rerror<0.5):
+            print('good shape')
+        else:
+            if (sem_lerror > 0.5 & sem_rerror > 0.5):
+                sem_ldis = pre_left_node_dis
+                sem_rdis = pre_right_node_dis
+            else:
+                if(sem_rerror < 0.5):
+                    sem_ldis = (pre_left_node_dis + pre_right_node_dis - sem_rdis)
+                else:
+                    sem_rdis = (pre_left_node_dis + pre_right_node_dis - sem_ldis)
+
     else:
         if ((-1 < default_half_road_width - sem_ldis < 0.5) | (-1 < default_half_road_width - sem_rdis < 0.5)):
             print ('one in good shape')
