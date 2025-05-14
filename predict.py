@@ -5,6 +5,7 @@ from detectron2.engine.defaults import DefaultPredictor
 from mmseg.apis import inference_segmentor, init_segmentor
 import mmcv
 import numpy as np
+import cv2 as cv
 
 import json
 
@@ -33,6 +34,7 @@ def get_predict_func_detectron(conf_file,model_file):
     def predictor(img):
         simg = predictor_base(img)
         simg = simg['sem_seg']
+        # print(simg)
         simg[simg<0.5]=0
         cimg = simg.argmax(axis=0).cpu().numpy().astype('uint8')
         return cimg

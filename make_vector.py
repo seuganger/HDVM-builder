@@ -168,7 +168,7 @@ def get_vector_nodes(pcd):
         last_pose = poses[index][:3]
 
     # initialize
-    alpha = 0.85
+    alpha = 0.75
     # alpha is parameter to combine semantic information and pose information
     leftnode = []
     rightnode = []
@@ -262,14 +262,13 @@ def get_vector_nodes(pcd):
     print(sem_ldis,sem_lerror,sem_rdis,sem_rerror)
     # pose correction constant
     pL = pre_left_node_dis - default_half_road_width
-    pR = pre_right_node_dis - default_half_road_width
+    pR = pre_right_node_dis - default_half_road_width          
 
-   
     if(-0.5 < 2 * default_half_road_width - sem_ldis - sem_rdis < 0.5):
-        if (sem_lerror<0.5 & sem_rerror<0.5):
+        if ((sem_lerror<0.5) & (sem_rerror<0.5)):
             print('good shape')
         else:
-            if (sem_lerror > 0.5 & sem_rerror > 0.5):
+            if ((sem_lerror > 0.5) & (sem_rerror > 0.5)):
                 sem_ldis = pre_left_node_dis
                 sem_rdis = pre_right_node_dis
             else:
@@ -277,7 +276,6 @@ def get_vector_nodes(pcd):
                     sem_ldis = (pre_left_node_dis + pre_right_node_dis - sem_rdis)
                 else:
                     sem_rdis = (pre_left_node_dis + pre_right_node_dis - sem_ldis)
-
     else:
         if ((-1 < default_half_road_width - sem_ldis < 0.5) | (-1 < default_half_road_width - sem_rdis < 0.5)):
             print ('one in good shape')
@@ -310,13 +308,14 @@ def get_vector_nodes(pcd):
             print('sem fail')
             sem_ldis = pre_left_node_dis
             sem_rdis = pre_right_node_dis 
+            # return leftnode,rightnode
 
     # four multiple contraints
 
-    ldis = alpha * pre_left_node_dis + (1-alpha) * sem_ldis - (0.05+0.25*np.abs(pL+pR)) * pL 
-    rdis = alpha * pre_right_node_dis + (1-alpha) * sem_rdis - (0.05+0.25*np.abs(pL+pR)) * pR 
-    # ldis = sem_ldis
-    # rdis = sem_rdis
+    # ldis = alpha * pre_left_node_dis + (1-alpha) * sem_ldis - (0.03+0.15*np.abs(pL+pR)) * pL 
+    # rdis = alpha * pre_right_node_dis + (1-alpha) * sem_rdis - (0.03+0.15*np.abs(pL+pR)) * pR 
+    ldis = sem_ldis - (0.03+0.15*np.abs(pL+pR)) * pL
+    rdis = sem_rdis - (0.03+0.15*np.abs(pL+pR)) * pR
     
     left_tran = [0, ldis, 0, 0, 0, 0, 1]
     right_tran = [0, -rdis, 0, 0, 0, 0, 1]

@@ -125,6 +125,7 @@ def get_semantic_pcd(img,pcd):
     src = pcl2image(pcd, img.shape[1], img.shape[0], extrinsic)
     # segmentation
     cimg = predict(rimg)
+
     src[:, :, 2] = cimg
     # print("the shape of src")
     # print(np.shape(src))
@@ -335,7 +336,17 @@ for msg in bagread:
                 # lps[:,1] = lpscp[:,0]
                 # print(np.shape(lps))
                 sem_pcd, semimg = get_semantic_pcd(img, lps)
+
+                color_img = np.zeros((np.shape(semimg)[0],np.shape(semimg)[1],3))
+                for i in range(np.shape(semimg)[0]):
+                    for j in range(np.shape(semimg)[1]):
+                        # print(color_classes[cimg[i][j]])
+                        color_img[i,j,:] = color_classes[semimg[i][j]]
+                color_img = color_img.astype('uint8')
+
+                cv2.imwrite(config['save_folder']+"/sempics_rgb/%06d.png" % (index), color_img)
                 cv2.imwrite(config['save_folder']+"/sempics/%06d.png" % (index), semimg)
+
                 semimg = colors[semimg.flatten()].reshape((*semimg.shape, 3))
                 semimgPubHandle.publish(bri.cv2_to_imgmsg(semimg,'bgr8'))
                 if len(sem_pcd) != 0:
